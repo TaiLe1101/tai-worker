@@ -28,6 +28,10 @@ SYSTEM_INSTRUCTION = (
 )
 
 
+class TranslationUnavailableError(RuntimeError):
+    """Raised when no provider can produce a usable Vietnamese translation."""
+
+
 class TranslationService:
     """Translate text using Gemini, then two Google Translate fallbacks."""
 
@@ -51,19 +55,32 @@ class TranslationService:
 
     def translate(self, text: str) -> str:
         translated = self._translate_with_gemini(text)
-        if translated:
+        if self._is_usable_translation(text, translated):
             return translated
 
         translated = self._translate_with_library(text)
-        if translated:
+        if self._is_usable_translation(text, translated):
             return translated
 
         translated = self._translate_with_google_endpoint(text)
-        if translated:
+        if self._is_usable_translation(text, translated):
             return translated
 
-        logger.warning("All translators unavailable; synthesizing original text")
-        return text
+        logger.error("All translation providers failed; refusing original-language TTS")
+        raise TranslationUnavailableError("No translation provider is available")
+
+    @staticmethod
+    def _is_usable_translation(source: str, translated: str | None) -> bool:
+        if not translated:
+            return False
+        if translated.casefold() != source.casefold():
+            return True
+        # A single proper noun or technical term may legitimately stay intact.
+        # A whole unchanged sentence means translation did not happen.
+        if len(source.split()) == 1:
+            return True
+        logger.warning("Translation provider returned unchanged multi-word text")
+        return False
 
     def _translate_with_gemini(self, text: str) -> str | None:
         if self._client is None:
@@ -80,8 +97,9 @@ class TranslationService:
             return clean_text(response.text or "") or None
         except Exception as exc:
             logger.warning(
-                "Gemini failed (%s); trying deep-translator",
+                "Gemini failed (%s, status=%s); trying deep-translator",
                 type(exc).__name__,
+                getattr(exc, "status", None) or getattr(exc, "code", None),
             )
             return None
 
@@ -91,8 +109,7 @@ class TranslationService:
             # GoogleTranslator stores mutable text, so create it per request.
             result = GoogleTranslator(source="auto", target="vi").translate(text)
             translated = clean_text(result or "")
-            if translated and translated.casefold() != text.casefold():
-                return translated
+            return translated or None
         except Exception as exc:
             logger.warning(
                 "deep-translator failed (%s); trying Google endpoint",
@@ -115,9 +132,10 @@ class TranslationService:
                 timeout=7,
             )
             response.raise_for_status()
-            return clean_text(
+            translated = clean_text(
                 "".join(part[0] or "" for part in response.json()[0])
-            ) or None
+            )
+            return translated or None
         except Exception as exc:
             logger.warning("Google fallback failed (%s)", type(exc).__name__)
             return None

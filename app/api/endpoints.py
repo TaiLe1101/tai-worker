@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from app.core.security import require_api_key
 from app.schemas.tts import HealthResponse, ProcessTTSRequest
-from app.services.translator import TranslationService
+from app.services.translator import TranslationService, TranslationUnavailableError
 from app.services.tts_engine import TTSEngine
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,14 @@ async def process_tts(
     tts_engine: Annotated[TTSEngine, Depends(get_tts_engine)],
 ) -> Response:
     # Provider SDKs are synchronous; keep them outside the event loop.
-    translated_text = await asyncio.to_thread(translator.translate, payload.text)
+    try:
+        translated_text = await asyncio.to_thread(translator.translate, payload.text)
+    except TranslationUnavailableError:
+        logger.error("Translation unavailable; TTS was not started")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Không thể dịch nội dung sang tiếng Việt; vui lòng thử lại",
+        ) from None
 
     # Closing NamedTemporaryFile before Edge writes is required on Windows.
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:

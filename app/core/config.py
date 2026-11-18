@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     app_version: str = "1.0.0"
     worker_api_key: SecretStr = Field(min_length=1)
     gemini_api_key: SecretStr | None = None
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.8-flash"
     gemini_timeout_ms: int = Field(default=30_000, ge=1_000)
 
     tts_voice: str = "vi-VN-HoaiMyNeural"
