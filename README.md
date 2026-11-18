@@ -41,3 +41,20 @@ curl.exe http://127.0.0.1:8000/process-tts `
 
 Swagger UI có tại `http://127.0.0.1:8000/docs`; nút **Authorize** sẽ yêu cầu
 giá trị `X-API-Key`.
+
+## Chạy production trên Ubuntu bằng PM2
+
+Tạo virtual environment và cài dependency trước khi khởi động PM2:
+
+```bash
+sudo apt update
+sudo apt install -y python3 python3-venv python3-pip
+python3 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -r requirements.txt
+pm2 start ecosystem.config.cjs
+pm2 save
+```
+
+Ứng dụng đọc `.env` tại thư mục gốc project. Nên giữ `HOST=127.0.0.1` khi
+Nginx chạy cùng server và reverse proxy vào cổng cấu hình trong `PORT`.
